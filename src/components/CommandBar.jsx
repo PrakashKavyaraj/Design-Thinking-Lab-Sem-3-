@@ -41,14 +41,10 @@ export function CommandBar({ onExecuteCommand }) {
       </form>
 
       <div className="command-chips">
-        <span className="chips-label">Quick Prompts:</span>
-        <button className="chip" onClick={() => handleChipClick('make it rain')}>🌧️ Rainstorm</button>
+        <span className="chips-label">Try:</span>
+        <button className="chip" onClick={() => handleChipClick('make it rain')}>🌧️ Rain</button>
         <button className="chip" onClick={() => handleChipClick('start drought')}>🌵 Drought</button>
-        <button className="chip" onClick={() => handleChipClick('night mode')}>🌙 Night</button>
-        <button className="chip" onClick={() => handleChipClick('sunny')}>☀️ Sunny</button>
-        <button className="chip" onClick={() => handleChipClick('spawn 10 rabbits')}>🐇 +10 Rabbits</button>
-        <button className="chip" onClick={() => handleChipClick('spawn 3 foxes')}>🦊 +3 Foxes</button>
-        <button className="chip" onClick={() => handleChipClick('boost grass')}>🌱 Max Grass</button>
+        <button className="chip" onClick={() => handleChipClick('spawn 10 rabbits')}>🐇 +10</button>
       </div>
 
       {feedback && (
