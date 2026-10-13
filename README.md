@@ -19,7 +19,7 @@ All global population fluctuations result strictly from local behavioral rules a
 
 - **React 19** — User interface components, dashboard state management, and user input validation.
 - **Vite** — High-performance frontend build tool and dev server.
-- **Three.js** — Direct WebGL 3D rendering for procedural terrain, lighting, camera orbit controls, and low-poly 3D entity models.
+- **Three.js** — Direct WebGL 3D rendering for procedural terrain, lighting, camera orbit controls, rain particle simulation, and low-poly 3D entity models.
 - **Vanilla JavaScript Modules** — Decoupled, pure mathematical simulation engine.
 - **HTML5 & CSS3** — Responsive dark forest aesthetic scientific dashboard layout.
 
@@ -49,6 +49,8 @@ All global population fluctuations result strictly from local behavioral rules a
 
 ## 📁 Project Folder Structure
 
+TerraSim follows a strictly minimal folder structure (only `components` and `simulation`):
+
 ```
 TerraSim/
 ├── index.html
@@ -64,15 +66,19 @@ TerraSim/
     │   ├── Header.jsx               # Application header with title and description
     │   ├── EcosystemScene.jsx       # Canvas container & animation frame update loop
     │   ├── PopulationStats.jsx      # Real-time population metrics & status cards
-    │   ├── SimulationControls.jsx   # Interactive control panel (Start, Pause, Reset, Inputs, Speed)
-    │   └── StatusIndicator.jsx      # Dynamic simulation state badge (Active, Paused, Extinct)
+    │   ├── PopulationChart.jsx      # Real-time multi-line canvas chart for population trends
+    │   ├── EntityInspector.jsx      # HUD card for clicked animal (energy, age, camera follow)
+    │   ├── CommandBar.jsx           # Natural-language command parser with quick prompts
+    │   ├── SimulationControls.jsx   # Interactive control panel (Weather, Start, Pause, Reset, Speed)
+    │   └── StatusIndicator.jsx      # Dynamic simulation state badge (Active, Paused, Weather)
     └── simulation/
         ├── constants.js             # Ecological constants, world boundaries, & thresholds
-        ├── createWorld.js           # Three.js scene, lighting, terrain, pond, trees, & 3D models
+        ├── weatherSystem.js         # Weather states (Sunny, Rain, Drought, Night) & multipliers
+        ├── createWorld.js           # Three.js scene, lighting, rain particles, raycaster, & 3D models
         ├── grassSystem.js           # Resource grid allocation, growth, & consumption logic
         ├── rabbitBehavior.js        # Herbivore AI state machine (Wander, Seek Food, Eat, Reproduce, Die)
         ├── foxBehavior.js           # Predator AI state machine (Wander, Hunt, Catch, Eat, Reproduce, Die)
-        └── simulationEngine.js      # Central simulation runner maintaining state & entity queues
+        └── simulationEngine.js      # Central simulation runner with mutation queues & command parser
 ```
 
 ---
@@ -80,7 +86,7 @@ TerraSim/
 ## ⚙️ Simulation Architecture & Rules
 
 ### 1. Grass Resource Mechanics
-- Terrain is divided into a 20x20 grid of grass patches.
+- Terrain is divided into a 20x20 grid of grass patches (400 patches).
 - Grass continuously regenerates up to a maximum energy capacity (1.0).
 - Patches inside the pond area are rendered impassable with zero grass growth.
 - Rabbits consume 0.4 energy units per bite when feeding.
@@ -104,19 +110,26 @@ TerraSim/
 
 ---
 
-## 📌 Current Development Status (Part 1 - Complete)
+## 🌧️ Part 2: Environmental & Advanced Features
 
-- [x] **Stage 1:** Project structure, Vite + React setup, Three.js 3D terrain environment, lighting, pond, procedural trees, and camera orbit controls.
-- [x] **Stage 2:** Procedural 3D animal models (Rabbit & Fox), simulation entity state machine, movement boundaries, and constants configuration.
-- [x] **Stage 3:** Grass resource grid system with capacity, growth, consumption, and rabbit foraging behavior.
-- [x] **Stage 4:** Fox predator-prey hunting logic, real entity removal on catch, birth/death mutation queues.
-- [x] **Stage 5:** Live statistics panel (counts, births, deaths, grass level %, runtime), input validation, start, pause, resume, reset, and speed multiplier controls.
+### 1. Weather Events System
+- **☀️ Sunny**: Standard baseline grass growth and metabolic decay.
+- **🌧️ Rainstorm**: Visible 3D rain droplet particles falling; boosts grass regeneration rate by 2.5x.
+- **🌵 Drought**: Arid amber sky & fog; halts grass growth (0.15x) and accelerates rabbit metabolic drain by 1.35x.
+- **🌙 Night**: Midnight sky & moonlight; enhances predator nocturnal perception by 1.25x.
 
----
+### 2. Real-Time Population Dynamics Chart
+- Canvas-based multi-line graph plotting historical fluctuations of **Rabbits** (white), **Foxes** (orange), and **Grass Capacity** (green) over the past 60 seconds.
+- Demonstrates emergent Lotka-Volterra oscillatory cycles without third-party graphing libraries.
 
-## 🔮 Planned Part 2 Extensions (Future Scope)
+### 3. Animal Inspector & Camera Tracking
+- **Raycasting**: Click any Rabbit or Fox in the 3D viewport to inspect its live metrics.
+- Displays species, live energy gauge, age vs lifespan, current AI state, and coordinates.
+- **Follow with Camera**: Centers and tracks the selected animal smoothly with OrbitControls.
 
-- Dynamic population charts & Lotka-Volterra phase plots.
-- Weather cycles (Rain, Drought, Night/Day cycle).
-- Natural language command interpretation.
-- Entity selection & individual animal camera tracking inspector.
+### 4. Natural-Language Command Interface
+- Client-side rule-based command parser with zero external AI/API dependencies.
+- Understands commands such as:
+  - `"make it rain"`, `"start drought"`, `"night mode"`, `"sunny"`
+  - `"spawn 10 rabbits"`, `"spawn 3 foxes"`, `"boost grass"`
+  - `"pause"`, `"resume"`, `"reset"`, `"speed 5x"`

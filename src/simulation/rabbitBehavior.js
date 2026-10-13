@@ -23,12 +23,12 @@ export class Rabbit {
     this.eatCooldown = 0;
   }
 
-  update(deltaTime, grassSystem, totalRabbitCount, birthQueue) {
+  update(deltaTime, grassSystem, totalRabbitCount, birthQueue, energyDecayMultiplier = 1.0) {
     if (this.isDead) return;
 
     // Age and energy decay
     this.age += deltaTime;
-    this.energy -= RABBIT_CONFIG.ENERGY_DECAY_RATE * deltaTime;
+    this.energy -= RABBIT_CONFIG.ENERGY_DECAY_RATE * energyDecayMultiplier * deltaTime;
     if (this.eatCooldown > 0) this.eatCooldown -= deltaTime;
 
     // Check death conditions

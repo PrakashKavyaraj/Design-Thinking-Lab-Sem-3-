@@ -7,8 +7,8 @@ export function EcosystemScene({ simulationEngine }) {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Create 3D world
-    const world = createEcosystemWorld(containerRef.current);
+    // Create 3D world with simulation engine for raycasting
+    const world = createEcosystemWorld(containerRef.current, simulationEngine);
 
     let animationFrameId;
     let lastTime = performance.now();
@@ -39,6 +39,8 @@ export function EcosystemScene({ simulationEngine }) {
     <div className="scene-container">
       <div ref={containerRef} className="webgl-viewport" />
       <div className="viewport-overlay-hint">
+        <span>👆 Click animal to inspect</span>
+        <span>•</span>
         <span>🖱️ Drag to rotate view</span>
         <span>•</span>
         <span>🔍 Scroll to zoom</span>

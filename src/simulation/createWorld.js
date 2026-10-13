@@ -1,10 +1,11 @@
-// Three.js World Creation and Rendering Sync Engine
+// Three.js World Creation and Rendering Sync Engine (Part 2 Enhanced)
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { WORLD_SIZE, HALF_WORLD, POND, GRASS_CONFIG } from './constants.js';
+import { WEATHER_TYPES } from './weatherSystem.js';
 
-export function createEcosystemWorld(container) {
+export function createEcosystemWorld(container, simulationEngine) {
   // 1. Setup Scene, Camera, Renderer
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a241e); // Deep forest ambiance background
@@ -29,11 +30,11 @@ export function createEcosystemWorld(container) {
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
   controls.maxPolarAngle = Math.PI / 2 - 0.05; // Don't go below ground
-  controls.minDistance = 15;
+  controls.minDistance = 10;
   controls.maxDistance = 140;
 
   // 3. Lighting System
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
   scene.add(ambientLight);
 
   const sunLight = new THREE.DirectionalLight(0xfffaed, 1.2);
@@ -56,7 +57,6 @@ export function createEcosystemWorld(container) {
 
   // 4. Terrain & Ground Creation
   const groundGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 32, 32);
-  // Add subtle height variations to terrain
   const posAttr = groundGeo.attributes.position;
   for (let i = 0; i < posAttr.count; i++) {
     const vx = posAttr.getX(i);
@@ -66,7 +66,6 @@ export function createEcosystemWorld(container) {
       const height = Math.sin(vx * 0.1) * Math.cos(vz * 0.1) * 0.6;
       posAttr.setZ(i, height);
     } else {
-      // Depress pond area slightly
       posAttr.setZ(i, -1.2);
     }
   }
@@ -129,18 +128,80 @@ export function createEcosystemWorld(container) {
   grassMesh.receiveShadow = true;
   scene.add(grassMesh);
 
-  // Dummy matrix for instanced grass transform
   const dummyMat = new THREE.Matrix4();
   const dummyColor = new THREE.Color();
 
-  // 8. Entity Mesh Management (Rabbits and Foxes)
-  const entityMeshMap = new Map(); // entity.id -> Three.js Group
+  // 8. Rain Particle System
+  const rainCount = 1200;
+  const rainGeo = new THREE.BufferGeometry();
+  const rainPositions = new Float32Array(rainCount * 3);
+  for (let i = 0; i < rainCount; i++) {
+    rainPositions[i * 3] = (Math.random() - 0.5) * WORLD_SIZE;
+    rainPositions[i * 3 + 1] = Math.random() * 35;
+    rainPositions[i * 3 + 2] = (Math.random() - 0.5) * WORLD_SIZE;
+  }
+  rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+  const rainMat = new THREE.PointsMaterial({
+    color: 0x90cdf4,
+    size: 0.22,
+    transparent: true,
+    opacity: 0.7
+  });
+  const rainSystem = new THREE.Points(rainGeo, rainMat);
+  rainSystem.visible = false;
+  scene.add(rainSystem);
 
-  // Geometries and Materials for Procedural Animals
+  // 9. Selected Entity 3D Target Marker
+  const markerGeo = new THREE.RingGeometry(0.8, 1.1, 16);
+  const markerMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.85
+  });
+  const selectionMarker = new THREE.Mesh(markerGeo, markerMat);
+  selectionMarker.rotation.x = -Math.PI / 2;
+  selectionMarker.visible = false;
+  scene.add(selectionMarker);
+
+  // 10. Entity Mesh Management
+  const entityMeshMap = new Map(); // entity.id -> Three.js Group
   const rabbitGeom = createRabbitModel();
   const foxGeom = createFoxModel();
 
-  // 9. Resize Handler
+  // 11. Raycasting for Animal Selection
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  const handlePointerDown = (event) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    // Collect all mesh children from animals
+    const animalMeshes = [];
+    entityMeshMap.forEach((group, id) => {
+      group.traverse((child) => {
+        if (child.isMesh) {
+          child.userData = { entityId: id };
+          animalMeshes.push(child);
+        }
+      });
+    });
+
+    const intersects = raycaster.intersectObjects(animalMeshes, false);
+    if (intersects.length > 0) {
+      const targetId = intersects[0].object.userData.entityId;
+      if (simulationEngine && targetId) {
+        simulationEngine.selectEntity(targetId);
+      }
+    }
+  };
+  renderer.domElement.addEventListener('pointerdown', handlePointerDown);
+
+  // 12. Resize Handler
   const handleResize = () => {
     if (!container) return;
     const w = container.clientWidth;
@@ -151,36 +212,96 @@ export function createEcosystemWorld(container) {
   };
   window.addEventListener('resize', handleResize);
 
-  // 10. Update & Render Sync Function
-  function syncRender(simulationEngine) {
-    // A. Sync Grass Mesh Instancing
-    const patches = simulationEngine.grassSystem.patches;
+  // 13. Weather Atmosphere Interpolators
+  const targetBg = new THREE.Color(0x1a241e);
+  const targetFog = new THREE.Color(0x1a241e);
+  const targetSunColor = new THREE.Color(0xfffaed);
+  let targetSunIntensity = 1.2;
+  let targetAmbientIntensity = 0.65;
+
+  function updateAtmosphere(weatherType) {
+    if (weatherType === WEATHER_TYPES.RAIN) {
+      targetBg.setHex(0x1e293b);
+      targetFog.setHex(0x1e293b);
+      targetSunColor.setHex(0x94a3b8);
+      targetSunIntensity = 0.45;
+      targetAmbientIntensity = 0.45;
+      rainSystem.visible = true;
+    } else if (weatherType === WEATHER_TYPES.DROUGHT) {
+      targetBg.setHex(0x3b2b1e);
+      targetFog.setHex(0x3b2b1e);
+      targetSunColor.setHex(0xffedd5);
+      targetSunIntensity = 1.6;
+      targetAmbientIntensity = 0.75;
+      rainSystem.visible = false;
+    } else if (weatherType === WEATHER_TYPES.NIGHT) {
+      targetBg.setHex(0x0a0f18);
+      targetFog.setHex(0x0a0f18);
+      targetSunColor.setHex(0x60a5fa);
+      targetSunIntensity = 0.35;
+      targetAmbientIntensity = 0.25;
+      rainSystem.visible = false;
+    } else {
+      // SUNNY
+      targetBg.setHex(0x1a241e);
+      targetFog.setHex(0x1a241e);
+      targetSunColor.setHex(0xfffaed);
+      targetSunIntensity = 1.2;
+      targetAmbientIntensity = 0.65;
+      rainSystem.visible = false;
+    }
+
+    // Smooth lerp
+    scene.background.lerp(targetBg, 0.05);
+    scene.fog.color.lerp(targetFog, 0.05);
+    sunLight.color.lerp(targetSunColor, 0.05);
+    sunLight.intensity = THREE.MathUtils.lerp(sunLight.intensity, targetSunIntensity, 0.05);
+    ambientLight.intensity = THREE.MathUtils.lerp(ambientLight.intensity, targetAmbientIntensity, 0.05);
+  }
+
+  // 14. Update & Render Sync Function
+  function syncRender(engine) {
+    // A. Update Weather & Atmosphere
+    const weatherState = engine.weatherSystem.getState();
+    updateAtmosphere(weatherState.currentWeather);
+
+    // Animate Rain if active
+    if (rainSystem.visible) {
+      const positions = rainGeo.attributes.position.array;
+      for (let i = 1; i < rainCount * 3; i += 3) {
+        positions[i] -= 0.7;
+        if (positions[i] < 0) {
+          positions[i] = 32;
+        }
+      }
+      rainGeo.attributes.position.needsUpdate = true;
+    }
+
+    // B. Sync Grass Mesh Instancing
+    const patches = engine.grassSystem.patches;
     for (let i = 0; i < patches.length; i++) {
       const p = patches[i];
       const scale = p.inPond ? 0.001 : Math.max(0.05, p.energy);
-      
+
       dummyMat.makeTranslation(p.x, 0.1, p.z);
       dummyMat.scale(new THREE.Vector3(scale, scale, scale));
       grassMesh.setMatrixAt(i, dummyMat);
 
-      // Color variation based on growth
       if (p.energy > 0.7) {
-        dummyColor.setHex(0x38a169); // Rich green
+        dummyColor.setHex(0x38a169);
       } else if (p.energy > 0.3) {
-        dummyColor.setHex(0x68d391); // Mid green
+        dummyColor.setHex(0x68d391);
       } else {
-        dummyColor.setHex(0x9ae6b4); // Light pale green
+        dummyColor.setHex(0x9ae6b4);
       }
       grassMesh.setColorAt(i, dummyColor);
     }
     grassMesh.instanceMatrix.needsUpdate = true;
     if (grassMesh.instanceColor) grassMesh.instanceColor.needsUpdate = true;
 
-    // B. Sync Rabbits and Foxes
+    // C. Sync Rabbits
     const activeIds = new Set();
-
-    // Sync Rabbits
-    const rabbits = simulationEngine.rabbits;
+    const rabbits = engine.rabbits;
     for (let i = 0; i < rabbits.length; i++) {
       const r = rabbits[i];
       activeIds.add(r.id);
@@ -192,18 +313,16 @@ export function createEcosystemWorld(container) {
         entityMeshMap.set(r.id, group);
       }
 
-      // Position and Rotation
       group.position.set(r.x, 0.4, r.z);
       group.rotation.y = -r.rotation + Math.PI / 2;
 
-      // Hop animation logic
       const hopFrequency = r.state === 'EATING' ? 2 : 10;
       const bounce = Math.abs(Math.sin(Date.now() * 0.008 * hopFrequency)) * (r.state === 'EATING' ? 0.15 : 0.35);
       group.position.y = 0.3 + bounce;
     }
 
-    // Sync Foxes
-    const foxes = simulationEngine.foxes;
+    // D. Sync Foxes
+    const foxes = engine.foxes;
     for (let i = 0; i < foxes.length; i++) {
       const f = foxes[i];
       activeIds.add(f.id);
@@ -215,23 +334,20 @@ export function createEcosystemWorld(container) {
         entityMeshMap.set(f.id, group);
       }
 
-      // Position and Rotation
       group.position.set(f.x, 0.5, f.z);
       group.rotation.y = -f.rotation + Math.PI / 2;
 
-      // Trot animation logic
       const runFreq = f.state === 'HUNTING' ? 14 : 7;
       const bounce = Math.abs(Math.sin(Date.now() * 0.008 * runFreq)) * 0.25;
       group.position.y = 0.4 + bounce;
 
-      // Tail wiggle animation
       const tailMesh = group.getObjectByName('tail');
       if (tailMesh) {
         tailMesh.rotation.z = Math.sin(Date.now() * 0.012 * runFreq) * 0.3;
       }
     }
 
-    // Remove meshes of dead entities
+    // E. Remove meshes of dead entities
     entityMeshMap.forEach((mesh, id) => {
       if (!activeIds.has(id)) {
         scene.remove(mesh);
@@ -240,13 +356,27 @@ export function createEcosystemWorld(container) {
       }
     });
 
-    // Update Controls and Render Scene
+    // F. Update Selection Marker & Camera Follow
+    if (engine.selectedEntityId && entityMeshMap.has(engine.selectedEntityId)) {
+      const targetMesh = entityMeshMap.get(engine.selectedEntityId);
+      selectionMarker.visible = true;
+      selectionMarker.position.set(targetMesh.position.x, 0.08, targetMesh.position.z);
+      selectionMarker.rotation.z += 0.03; // Rotate marker ring
+
+      if (engine.followCamera) {
+        controls.target.lerp(targetMesh.position, 0.06);
+      }
+    } else {
+      selectionMarker.visible = false;
+    }
+
     controls.update();
     renderer.render(scene, camera);
   }
 
   function cleanup() {
     window.removeEventListener('resize', handleResize);
+    renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
     entityMeshMap.forEach((mesh) => {
       scene.remove(mesh);
       disposeGroup(mesh);
@@ -264,8 +394,6 @@ export function createEcosystemWorld(container) {
 
 // Helper: Grass Tuft Geometry
 function createGrassTuftGeometry() {
-  const group = new THREE.BufferGeometry();
-  // Simple 2 intersecting planes for tuft
   const bladeGeo = new THREE.PlaneGeometry(1.2, 1.4);
   bladeGeo.translate(0, 0.7, 0);
   return bladeGeo;
@@ -275,9 +403,7 @@ function createGrassTuftGeometry() {
 function createRabbitModel() {
   const group = new THREE.Group();
 
-  // White fluffy body material
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf0f4f8, roughness: 0.6 });
-  const earMat = new THREE.MeshStandardMaterial({ color: 0xffb6c1, roughness: 0.5 });
   const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
 
   // Body
@@ -296,7 +422,6 @@ function createRabbitModel() {
 
   // Ears
   const earGeo = new THREE.BoxGeometry(0.12, 0.5, 0.12);
-
   const leftEar = new THREE.Mesh(earGeo, bodyMat);
   leftEar.position.set(-0.16, 0.95, 0.4);
   leftEar.rotation.z = -0.15;
@@ -318,14 +443,12 @@ function createRabbitModel() {
   const eyeGeo = new THREE.SphereGeometry(0.05, 8, 8);
   const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
   leftEye.position.set(-0.26, 0.55, 0.6);
-
   const rightEye = leftEye.clone();
   rightEye.position.set(0.26, 0.55, 0.6);
-
   group.add(leftEye);
   group.add(rightEye);
 
-  // Fluffy Tail
+  // Tail
   const tailGeo = new THREE.SphereGeometry(0.15, 8, 8);
   const tail = new THREE.Mesh(tailGeo, bodyMat);
   tail.position.set(0, 0.3, -0.5);
@@ -343,14 +466,14 @@ function createFoxModel() {
   const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.4 });
 
-  // Sleek Fox Body
+  // Body
   const bodyGeo = new THREE.BoxGeometry(0.85, 0.75, 1.4);
   const body = new THREE.Mesh(bodyGeo, orangeMat);
   body.position.y = 0.45;
   body.castShadow = true;
   group.add(body);
 
-  // White Chest
+  // Chest
   const chestGeo = new THREE.BoxGeometry(0.75, 0.5, 0.3);
   const chest = new THREE.Mesh(chestGeo, whiteMat);
   chest.position.set(0, 0.35, 0.6);
@@ -371,13 +494,13 @@ function createFoxModel() {
   snout.castShadow = true;
   group.add(snout);
 
-  // Black Nose Tip
+  // Nose
   const noseGeo = new THREE.SphereGeometry(0.07, 8, 8);
   const nose = new THREE.Mesh(noseGeo, darkMat);
   nose.position.set(0, 0.68, 1.35);
   group.add(nose);
 
-  // Pointed Ears
+  // Ears
   const earGeo = new THREE.ConeGeometry(0.18, 0.45, 4);
   const leftEar = new THREE.Mesh(earGeo, orangeMat);
   leftEar.position.set(-0.24, 1.2, 0.75);
@@ -393,7 +516,7 @@ function createFoxModel() {
   rightEar.position.set(0.24, 1.2, 0.75);
   group.add(rightEar);
 
-  // Fluffy Tail
+  // Tail
   const tailGroup = new THREE.Group();
   tailGroup.name = 'tail';
   tailGroup.position.set(0, 0.6, -0.7);
@@ -424,7 +547,6 @@ function createTreesAndEnvironment(scene) {
   const foliageMat2 = new THREE.MeshStandardMaterial({ color: 0x276738, roughness: 0.7 });
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x5a6572, roughness: 0.8 });
 
-  // Place 16 procedural trees around the ecosystem
   const treePositions = [
     { x: -30, z: -25 }, { x: -35, z: 10 }, { x: -28, z: 30 },
     { x: -10, z: 32 }, { x: 15, z: 35 }, { x: 32, z: 28 },
@@ -436,14 +558,12 @@ function createTreesAndEnvironment(scene) {
   treePositions.forEach((pos, idx) => {
     const treeGroup = new THREE.Group();
 
-    // Trunk
     const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 8);
     const trunk = new THREE.Mesh(trunkGeo, trunkMat);
     trunk.position.y = 1.5;
     trunk.castShadow = true;
     treeGroup.add(trunk);
 
-    // Foliage cones
     const mat = idx % 2 === 0 ? foliageMat1 : foliageMat2;
     const cone1 = new THREE.Mesh(new THREE.ConeGeometry(2.5, 4, 8), mat);
     cone1.position.y = 4;
@@ -466,7 +586,6 @@ function createTreesAndEnvironment(scene) {
     scene.add(treeGroup);
   });
 
-  // Scatter a few low-poly rocks
   const rockGeo = new THREE.DodecahedronGeometry(1.2, 1);
   const rockPositions = [
     { x: POND.x + POND.radius + 1.2, z: POND.z - 2 },

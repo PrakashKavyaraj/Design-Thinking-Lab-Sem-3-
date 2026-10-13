@@ -23,7 +23,7 @@ export class Fox {
     this.huntCooldown = 0;
   }
 
-  update(deltaTime, rabbits, totalFoxCount, birthQueue) {
+  update(deltaTime, rabbits, totalFoxCount, birthQueue, perceptionMultiplier = 1.0) {
     if (this.isDead) return;
 
     // Age & energy decay
@@ -47,7 +47,7 @@ export class Fox {
     }
 
     // Find prey (nearest alive rabbit within perception range)
-    this.targetRabbit = this.findNearestPrey(rabbits);
+    this.targetRabbit = this.findNearestPrey(rabbits, perceptionMultiplier);
 
     if (this.targetRabbit && !this.targetRabbit.isDead) {
       this.state = 'HUNTING';
@@ -89,9 +89,10 @@ export class Fox {
     this.enforceBoundaries();
   }
 
-  findNearestPrey(rabbits) {
+  findNearestPrey(rabbits, perceptionMultiplier = 1.0) {
     let nearest = null;
-    let minDistanceSq = FOX_CONFIG.PERCEPTION_RADIUS * FOX_CONFIG.PERCEPTION_RADIUS;
+    const effectiveRadius = FOX_CONFIG.PERCEPTION_RADIUS * perceptionMultiplier;
+    let minDistanceSq = effectiveRadius * effectiveRadius;
 
     for (let i = 0; i < rabbits.length; i++) {
       const r = rabbits[i];

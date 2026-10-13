@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function StatusIndicator({ statusMessage, isRunning, isPaused, speed }) {
+export function StatusIndicator({ statusMessage, isRunning, isPaused, speed, weather }) {
   let badgeClass = 'status-badge status-ready';
 
   if (!isRunning) {
@@ -13,6 +13,14 @@ export function StatusIndicator({ statusMessage, isRunning, isPaused, speed }) {
     badgeClass = 'status-badge status-active';
   }
 
+  const currentWeather = weather?.currentWeather || 'SUNNY';
+  const weatherIcons = {
+    SUNNY: '☀️ Sunny',
+    RAIN: '🌧️ Rainstorm',
+    DROUGHT: '🌵 Drought',
+    NIGHT: '🌙 Night'
+  };
+
   return (
     <div className="status-container">
       <div className={badgeClass}>
@@ -20,7 +28,12 @@ export function StatusIndicator({ statusMessage, isRunning, isPaused, speed }) {
         <span className="status-text">{statusMessage}</span>
       </div>
       {isRunning && (
-        <span className="speed-badge">{speed}x Speed</span>
+        <>
+          <span className="speed-badge">{speed}x Speed</span>
+          <span className={`weather-badge weather-${currentWeather.toLowerCase()}`}>
+            {weatherIcons[currentWeather] || currentWeather}
+          </span>
+        </>
       )}
     </div>
   );
